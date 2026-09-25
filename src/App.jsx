@@ -142,56 +142,341 @@ export default function App() {
   const [cloud,setCloud] = useState(false);
 
   useEffect(() => { loadProducts(); }, []);
+
   async function loadProducts() {
-    try { setLoading(true); const data = await api('/products'); if (Array.isArray(data.products)) { setProducts(data.products); localStorage.setItem('prtrendz_products',JSON.stringify(data.products)); setCloud(true); } }
-    catch { setCloud(false); }
-    finally { setLoading(false); }
+    try {
+      setLoading(true);
+      const data = await api('/products');
+
+      // FIXED: API returns the array directly
+      if (Array.isArray(data)) {
+        setProducts(data);
+        localStorage.setItem('prtrendz_products', JSON.stringify(data));
+        setCloud(true);
+      }
+    } catch {
+      setCloud(false);
+    } finally {
+      setLoading(false);
+    }
   }
+
   const go = (next) => { setPage(next); setMobileMenu(false); window.scrollTo({top:0,behavior:'smooth'}); };
   const move = (dir) => { const i=PAGES.indexOf(page); go(PAGES[(i+dir+PAGES.length)%PAGES.length]); };
   const enter = () => { sessionStorage.setItem('prtrendz_entered','1'); setEntered(true); };
   const buy = (p) => { if (p.meeshoLink) window.open(p.meeshoLink,'_blank','noopener,noreferrer'); };
+
   const saveProduct = async (data) => {
     if (!owner) throw new Error('Owner session expired.');
     const editing = productModal?.id;
+
     try {
-      const result = await api(editing ? `/products/${editing}` : '/products', { method: editing?'PUT':'POST', headers:{'x-owner-code':OWNER_CODE}, body:JSON.stringify(data) });
-      const next = result.product;
+      const result = await api(
+        editing ? `/products/${editing}` : '/products',
+        {
+          method: editing ? 'PUT' : 'POST',
+          headers: {'x-owner-code':OWNER_CODE},
+          body:JSON.stringify(data)
+        }
+      );
+
+      // FIXED: API returns the product directly
+      const next = result;
+
       setProducts(ps => editing ? ps.map(p=>p.id===editing?next:p) : [...ps,next]);
-      setProductModal(null); setCloud(true); return;
+      setProductModal(null);
+      setCloud(true);
+      return;
+
     } catch (e) {
       // Local fallback keeps the site usable before the cloud keys are configured.
-      const next = editing ? products.map(p=>p.id===editing?{...data,id:editing}:p) : [...products,{...data,id:crypto.randomUUID()}];
-      setProducts(next); localStorage.setItem('prtrendz_products',JSON.stringify(next)); setProductModal(null); setCloud(false);
+      const next = editing
+        ? products.map(p=>p.id===editing?{...data,id:editing}:p)
+        : [...products,{...data,id:crypto.randomUUID()}];
+
+      setProducts(next);
+      localStorage.setItem('prtrendz_products',JSON.stringify(next));
+      setProductModal(null);
+      setCloud(false);
+
       if (!String(e.message).toLowerCase().includes('not configured')) throw e;
     }
   };
+
   const removeProduct = async (id) => {
     if (!confirm('Delete this product?')) return;
-    try { await api(`/products/${id}`,{method:'DELETE',headers:{'x-owner-code':OWNER_CODE}}); setProducts(ps=>ps.filter(p=>p.id!==id)); }
-    catch (e) { if (String(e.message).toLowerCase().includes('not configured')) setProducts(ps=>ps.filter(p=>p.id!==id)); else alert(e.message); }
+
+    try {
+      await api(`/products/${id}`,{
+        method:'DELETE',
+        headers:{'x-owner-code':OWNER_CODE}
+      });
+
+      setProducts(ps=>ps.filter(p=>p.id!==id));
+
+    } catch (e) {
+      if (String(e.message).toLowerCase().includes('not configured')) {
+        setProducts(ps=>ps.filter(p=>p.id!==id));
+      } else {
+        alert(e.message);
+      }
+    }
   };
-  const filtered = useMemo(() => [...products].filter(p=>(category==='All'||p.category===category)&&(!search||p.name.toLowerCase().includes(search.toLowerCase()))).sort((a,b)=>sort==='price-low'?a.price-b.price:sort==='price-high'?b.price-a.price:(Number(b.created_at||b.id)>Number(a.created_at||a.id)?1:-1)),[products,category,search,sort]);
+
+  const filtered = useMemo(
+    () => [...products]
+      .filter(p=>
+        (category==='All'||p.category===category) &&
+        (!search||p.name.toLowerCase().includes(search.toLowerCase()))
+      )
+      .sort((a,b)=>
+        sort==='price-low'
+          ? a.price-b.price
+          : sort==='price-high'
+            ? b.price-a.price
+            : (Number(b.created_at||b.id)>Number(a.created_at||a.id)?1:-1)
+      ),
+    [products,category,search,sort]
+  );
 
   if (!entered) return <Landing onEnter={enter}/>;
 
   const pageContent = page==='home' ? <>
-    <section className="hero"><div className="hero-copy"><span className="eyebrow">PR TRENDZ / EST. 2026</span><h1>THE NEW<br/><em>STANDARD</em><br/>OF STYLE.</h1><p>Premium fashion, jewellery and lifestyle pieces, curated with intention.</p><div className="hero-actions"><button className="gold-button" type="button" onClick={()=>go('shop')}>SHOP COLLECTION <ChevronRight/></button><button className="text-button" type="button" onClick={()=>go('about')}>OUR STORY</button></div></div><div className="hero-card"><div className="hero-card-inner"><span>01</span><strong>CURATED<br/>EDIT</strong><small>Affordable price<br/>Premium quality</small></div></div></section>
-    <section className="section"><div className="section-head"><div><span className="eyebrow">THE EDIT</span><h2>Featured pieces</h2></div><button className="text-button" type="button" onClick={()=>go('shop')}>VIEW ALL <ChevronRight/></button></div><div className="product-grid">{products.slice(0,3).map(p=><ProductCard key={p.id} product={p} onBuy={buy}/>)}</div></section>
-  </> : page==='shop' ? <section className="section"><div className="section-head"><div><span className="eyebrow">SHOP</span><h2>All collections</h2></div><span className="muted">{filtered.length} pieces</span></div><div className="filters"><label><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products" /></label><select value={category} onChange={e=>setCategory(e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select><select value={sort} onChange={e=>setSort(e.target.value)}><option value="newest">Newest</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></div>{loading&&<p className="muted">Loading collection…</p>}<div className="product-grid">{filtered.map(p=><ProductCard key={p.id} product={p} onBuy={buy}/>)}</div>{!filtered.length&&<div className="empty">No products match your search.</div>}</section> : page==='about' ? <section className="editorial"><span className="eyebrow">THE BRAND</span><h1>Style without<br/><em>noise.</em></h1><p>PR TRENDZ brings together jewellery, clothing, gifts, beauty and accessories with a focus on clean presentation, accessible pricing and a premium shopping experience.</p><div className="manifesto"><span>01</span><strong>Affordable price.</strong><span>02</span><strong>Premium quality.</strong><span>03</span><strong>Curated for you.</strong></div></section> : <section className="editorial contact"><span className="eyebrow">CONTACT</span><h1>Let's connect.</h1><p>Follow PR TRENDZ for new drops, product updates and styling edits.</p><a className="gold-button" href="https://instagram.com/pr_trendz" target="_blank" rel="noreferrer"><Instagram size={17}/> @pr_trendz</a></section> : null;
+    <section className="hero">
+      <div className="hero-copy">
+        <span className="eyebrow">PR TRENDZ / EST. 2026</span>
+        <h1>THE NEW<br/><em>STANDARD</em><br/>OF STYLE.</h1>
+        <p>Premium fashion, jewellery and lifestyle pieces, curated with intention.</p>
+        <div className="hero-actions">
+          <button className="gold-button" type="button" onClick={()=>go('shop')}>SHOP COLLECTION <ChevronRight/></button>
+          <button className="text-button" type="button" onClick={()=>go('about')}>OUR STORY</button>
+        </div>
+      </div>
+
+      <div className="hero-card">
+        <div className="hero-card-inner">
+          <span>01</span>
+          <strong>CURATED<br/>EDIT</strong>
+          <small>Affordable price<br/>Premium quality</small>
+        </div>
+      </div>
+    </section>
+
+    <section className="section">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">THE EDIT</span>
+          <h2>Featured pieces</h2>
+        </div>
+        <button className="text-button" type="button" onClick={()=>go('shop')}>VIEW ALL <ChevronRight/></button>
+      </div>
+
+      <div className="product-grid">
+        {products.slice(0,3).map(p=><ProductCard key={p.id} product={p} onBuy={buy}/>)}
+      </div>
+    </section>
+  </> : page==='shop' ? <section className="section">
+
+    <div className="section-head">
+      <div>
+        <span className="eyebrow">SHOP</span>
+        <h2>All collections</h2>
+      </div>
+      <span className="muted">{filtered.length} pieces</span>
+    </div>
+
+    <div className="filters">
+      <label>
+        <Search size={16}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search products" />
+      </label>
+
+      <select value={category} onChange={e=>setCategory(e.target.value)}>
+        {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+      </select>
+
+      <select value={sort} onChange={e=>setSort(e.target.value)}>
+        <option value="newest">Newest</option>
+        <option value="price-low">Price: low to high</option>
+        <option value="price-high">Price: high to low</option>
+      </select>
+    </div>
+
+    {loading&&<p className="muted">Loading collection…</p>}
+
+    <div className="product-grid">
+      {filtered.map(p=><ProductCard key={p.id} product={p} onBuy={buy}/>)}
+    </div>
+
+    {!filtered.length&&<div className="empty">No products match your search.</div>}
+  </section> : page==='about' ? <section className="editorial">
+
+    <span className="eyebrow">THE BRAND</span>
+    <h1>Style without<br/><em>noise.</em></h1>
+    <p>PR TRENDZ brings together jewellery, clothing, gifts, beauty and accessories with a focus on clean presentation, accessible pricing and a premium shopping experience.</p>
+
+    <div className="manifesto">
+      <span>01</span>
+      <strong>Affordable price.</strong>
+      <span>02</span>
+      <strong>Premium quality.</strong>
+      <span>03</span>
+      <strong>Curated for you.</strong>
+    </div>
+
+  </section> : <section className="editorial contact">
+
+    <span className="eyebrow">CONTACT</span>
+    <h1>Let's connect.</h1>
+    <p>Follow PR TRENDZ for new drops, product updates and styling edits.</p>
+    <a className="gold-button" href="https://instagram.com/pr_trendz" target="_blank" rel="noreferrer">
+      <Instagram size={17}/> @pr_trendz
+    </a>
+
+  </section>;
 
   return <div className="app">
-    <header className="nav"><button className="brand" type="button" onClick={()=>go('home')}>PR <span>TRENDZ</span></button><nav className={mobileMenu?'open':''}>{PAGES.map(p=><button key={p} type="button" className={page===p?'active':''} onClick={()=>go(p)}>{p}</button>)}</nav><div className="nav-right"><button className="owner-link" type="button" onClick={()=>owner?go('dashboard'):setOwnerModal(true)}>OWNER</button><button className="menu-button" type="button" onClick={()=>setMobileMenu(v=>!v)}>{mobileMenu?<X/>:<Menu/>}</button></div></header>
+
+    <header className="nav">
+      <button className="brand" type="button" onClick={()=>go('home')}>PR <span>TRENDZ</span></button>
+
+      <nav className={mobileMenu?'open':''}>
+        {PAGES.map(p=>
+          <button key={p} type="button" className={page===p?'active':''} onClick={()=>go(p)}>
+            {p}
+          </button>
+        )}
+      </nav>
+
+      <div className="nav-right">
+        <button className="owner-link" type="button" onClick={()=>owner?go('dashboard'):setOwnerModal(true)}>
+          OWNER
+        </button>
+
+        <button className="menu-button" type="button" onClick={()=>setMobileMenu(v=>!v)}>
+          {mobileMenu?<X/>:<Menu/>}
+        </button>
+      </div>
+    </header>
+
     {pageContent}
-    {page==='dashboard' && <OwnerPanel products={products} cloud={cloud} onAdd={()=>setProductModal('new')} onEdit={p=>setProductModal(p)} onDelete={removeProduct} onLogout={()=>{setOwner(false);go('home')}}/>}
-    <footer className="footer"><div><button className="brand footer-brand" type="button" onClick={()=>go('home')}>PR <span>TRENDZ</span></button><p>Curated style. Premium feel.</p></div><div className="footer-links">{PAGES.map(p=><button key={p} type="button" onClick={()=>go(p)}>{p}</button>)}</div><div className="footer-note">© 2026 PR TRENDZ</div></footer>
-    <div className="page-arrows"><button type="button" aria-label="Previous page" onClick={()=>move(-1)}><ChevronLeft/></button><button type="button" aria-label="Next page" onClick={()=>move(1)}><ChevronRight/></button></div>
-    {ownerModal&&<OwnerModal onClose={()=>setOwnerModal(false)} onLogin={(code)=>{if(code===OWNER_CODE){setOwner(true);setOwnerModal(false);go('dashboard');}else alert('Invalid owner code.')}}/>}
-    {productModal&&<ProductModal product={productModal==='new'?null:productModal} onClose={()=>setProductModal(null)} onSave={saveProduct}/>} 
-    <button className="owner-fab" type="button" onClick={()=>owner?go('dashboard'):setOwnerModal(true)}>PR</button>
+
+    {page==='dashboard' &&
+      <OwnerPanel
+        products={products}
+        cloud={cloud}
+        onAdd={()=>setProductModal('new')}
+        onEdit={p=>setProductModal(p)}
+        onDelete={removeProduct}
+        onLogout={()=>{setOwner(false);go('home')}}
+      />
+    }
+
+    <footer className="footer">
+      <div>
+        <button className="brand footer-brand" type="button" onClick={()=>go('home')}>PR <span>TRENDZ</span></button>
+        <p>Curated style. Premium feel.</p>
+      </div>
+
+      <div className="footer-links">
+        {PAGES.map(p=>
+          <button key={p} type="button" onClick={()=>go(p)}>
+            {p}
+          </button>
+        )}
+      </div>
+
+      <div className="footer-note">© 2026 PR TRENDZ</div>
+    </footer>
+
+    <div className="page-arrows">
+      <button type="button" aria-label="Previous page" onClick={()=>move(-1)}>
+        <ChevronLeft/>
+      </button>
+
+      <button type="button" aria-label="Next page" onClick={()=>move(1)}>
+        <ChevronRight/>
+      </button>
+    </div>
+
+    {ownerModal&&
+      <OwnerModal
+        onClose={()=>setOwnerModal(false)}
+        onLogin={(code)=>{
+          if(code===OWNER_CODE){
+            setOwner(true);
+            setOwnerModal(false);
+            go('dashboard');
+          } else {
+            alert('Invalid owner code.');
+          }
+        }}
+      />
+    }
+
+    {productModal&&
+      <ProductModal
+        product={productModal==='new'?null:productModal}
+        onClose={()=>setProductModal(null)}
+        onSave={saveProduct}
+      />
+    }
+
+    <button className="owner-fab" type="button" onClick={()=>owner?go('dashboard'):setOwnerModal(true)}>
+      PR
+    </button>
+
   </div>;
 }
 
 function OwnerPanel({products,cloud,onAdd,onEdit,onDelete,onLogout}) {
- return <section className="section dashboard"><div className="section-head"><div><span className="eyebrow">PRIVATE / OWNER</span><h2>Product management</h2></div><div className="dashboard-actions"><span className={cloud?'cloud-status live':'cloud-status'}>{cloud?'● CLOUD SYNC':'○ LOCAL MODE'}</span><button className="outline-button" type="button" onClick={onLogout}><LogOut size={16}/> Logout</button><button className="gold-button" type="button" onClick={onAdd}><Plus size={17}/> Add product</button></div></div><div className="owner-list">{products.map(p=><div className="owner-row" key={p.id}><div className="owner-thumb">{p.image?<img src={p.image} alt=""/>:<Sparkles/>}</div><div className="owner-main"><strong>{p.name}</strong><span>{p.category} · ₹{p.price}</span></div><button className="icon-button" type="button" onClick={()=>onEdit(p)}><Pencil size={17}/></button><button className="icon-button danger" type="button" onClick={()=>onDelete(p.id)}><Trash2 size={17}/></button></div>)}</div></section>;
+  return <section className="section dashboard">
+
+    <div className="section-head">
+      <div>
+        <span className="eyebrow">PRIVATE / OWNER</span>
+        <h2>Product management</h2>
+      </div>
+
+      <div className="dashboard-actions">
+        <span className={cloud?'cloud-status live':'cloud-status'}>
+          {cloud?'● CLOUD SYNC':'○ LOCAL MODE'}
+        </span>
+
+        <button className="outline-button" type="button" onClick={onLogout}>
+          <LogOut size={16}/> Logout
+        </button>
+
+        <button className="gold-button" type="button" onClick={onAdd}>
+          <Plus size={17}/> Add product
+        </button>
+      </div>
+    </div>
+
+    <div className="owner-list">
+      {products.map(p=>
+        <div className="owner-row" key={p.id}>
+
+          <div className="owner-thumb">
+            {p.image?<img src={p.image} alt=""/>:<Sparkles/>}
+          </div>
+
+          <div className="owner-main">
+            <strong>{p.name}</strong>
+            <span>{p.category} · ₹{p.price}</span>
+          </div>
+
+          <button className="icon-button" type="button" onClick={()=>onEdit(p)}>
+            <Pencil size={17}/>
+          </button>
+
+          <button className="icon-button danger" type="button" onClick={()=>onDelete(p.id)}>
+            <Trash2 size={17}/>
+          </button>
+
+        </div>
+      )}
+    </div>
+
+  </section>;
 }
