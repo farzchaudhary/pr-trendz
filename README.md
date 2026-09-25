@@ -1,18 +1,24 @@
-# PR TRENDZ
+# PR TRENDZ — Premium Cloud Store
 
-Vite + React version of the PR TRENDZ website.
+Features:
+- Premium black / metallic-gold interface
+- Enter Website landing screen
+- Shop / About / Contact pages
+- Previous / next page arrows
+- Owner dashboard
+- Add, edit and delete products
+- Image upload + client-side compression
+- Cloud-synced products across phones and laptops via Supabase + Vercel API
+- Local fallback before cloud configuration
+- No unwanted blinking caret when tapping navigation/buttons
 
-## Run locally
+## Cloud setup
+1. Create a Supabase project.
+2. In Supabase SQL Editor, run `supabase.sql`.
+3. In Vercel → Project → Settings → Environment Variables add:
+   - `SUPABASE_URL` = your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service-role key
+   - `OWNER_CODE` = `PRTRENDZ-OWNER-2026` (or your own private code)
+4. Redeploy in Vercel.
 
-```bash
-npm install
-npm run dev
-```
-
-## Build for deployment
-
-```bash
-npm run build
-```
-
-The current owner/product data uses browser localStorage. The owner access code is in `src/App.jsx`; replace this with real authentication before using the site as a production admin system.
+The browser never receives the service-role key. Product reads/writes go through the Vercel API.
